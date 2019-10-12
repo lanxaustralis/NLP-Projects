@@ -1,4 +1,7 @@
-
+import Pkg
+Pkg.add("IterTools")
+Pkg.add("StatsBase")
+Pkg.add("Knet")
 using Knet, Base.Iterators, IterTools, LinearAlgebra, StatsBase, Test
 
 struct Vocab
@@ -16,7 +19,7 @@ function Vocab(file::String; tokenizer=split, vocabsize=Inf, mincount=1, unk="<u
         i2w = Vector{String}()
         push!(i2w, unk)
         push!(i2w, eos)
-        
+
         for line in eachline(f)
             sentence = tokenizer(line, ['.',' '], keepempty = false)
 
@@ -32,37 +35,35 @@ function Vocab(file::String; tokenizer=split, vocabsize=Inf, mincount=1, unk="<u
     end
 end
 
-file = "test_text.txt"
+file = "/home/minuteman/academics/'19 Fall/NLP/Project-Repo/NLP-Projects/Project 2/test_text.txt"
 v = Vocab(file)
 
 struct Embed; w; end
 
 function Embed(vocabsize::Int, embedsize::Int)
     ## Your code here
-    return Embed(param(vocabsize,embedsize))
+    return Embed(param(embedsize,vocabsize))
 end
 
 function (l::Embed)(x)
     ## Your code here
     W = l.w
     sx = size(x)
-    L = Array{Float64}(undef, size(W)[2],sx[1],sx[2])
-    for i in range(1,sx[1])
-        for j in range(1,sx[2])
-            L[:,i,j] = W[x[i,j],:]
+    L = Array{Float64}(undef, size(W)[1],sx[1],sx[2])
+    for i in range(1,stop=sx[1])
+        for j in range(1,stop=sx[2])
+            L[:,i,j] = W[:,x[i,j]]
         end
     end
-    return L 
+    return L
 end
-
+@info "Testing Embed"
 Knet.seed!(1)
-embed = Embed(10,10)
-input = rand(1:10, 2, 3)
+embed = Embed(100,10)
+input = rand(1:100, 2, 3)
 output = embed(input)
-
-output
 @test size(output) == (10, 2, 3)
-#@test norm(output) ≈ 0.59804f0
+@test norm(output) ≈ 0.59804f0
 
 struct Linear; w; b; end
 
@@ -96,7 +97,7 @@ function NNLM(vocab::Vocab, windowsize::Int, embedsize::Int, hiddensize::Int, dr
     ## Your code here
     vocabsize = length(v.i2w)
     ## NNLM (vocab::Vocab,  windowsize::Int,  embed::Embed,  hidden::Linear,  output::Linear,  dropout::Int)
-    NNLM(vocab, windowsize, Embed(embedsize,vocabsize),Linear(embedsize*windowsize,hiddensize),Linear(hiddensize,vocabsize),dropout)
+    NNLM(vocab, windowsize, Embed(vocabsize,embedsize),Linear(embedsize*windowsize,hiddensize),Linear(hiddensize,vocabsize),dropout)
 end
 
 #-
@@ -139,6 +140,37 @@ model = NNLM(train_vocab, HIST, EMBED, HIDDEN, DROPOUT)
 function pred_v1(m::NNLM, hist::AbstractVector{Int})
     @assert length(hist) == m.windowsize
     ## Your code here
+    emb_inp = reshape(hist,m.windowsize,1)
+    emb = dropout(m.embed,m.dropout;seed=1)
+    emb_out = emb(emb_inp)
+
+    hid_inp = vec(emb_out)
+    hid = dropout(m.hidden,m.dropout;seed=1)
+    hid_out = tanh.(hid(hid_inp))
+
+    out = m.output(hid_out)
+
+    return out
 end
 
-@doc vec
+#
+
+@info "Testing pred_v1"
+h = repeat([model.vocab.eos], model.windowsize)
+p = pred_v1(model, h)
+@test size(p) == size(train_vocab.i2w)
+
+
+## This predicts the scores for the whole sentence, will be used for later testing.
+function scores_v1(model, sent)
+    hist = repeat([ model.vocab.eos ], model.windowsize)
+    scores = []
+    for word in [ sent; model.vocab.eos ]
+        push!(scores, pred_v1(model, hist))
+        hist = [ hist[2:end]; word ]
+    end
+    hcat(scores...)
+end
+
+sent = first(train_sentences)
+@test size(scores_v1(model, sent)) == (length(train_vocab.i2w), length(sent)+1)
