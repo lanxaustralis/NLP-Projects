@@ -172,5 +172,29 @@ function scores_v1(model, sent)
     hcat(scores...)
 end
 
-sent = first(train_sentences)
-@test size(scores_v1(model, sent)) == (length(train_vocab.i2w), length(sent)+1)
+# sent = first(train_sentences)
+# @test size(scores_v1(model, sent)) == (length(train_vocab.i2w), length(sent)+1)
+
+function generate(m::NNLM; maxlength=30)
+    ## Your code here
+    hist = repeat([m.vocab.eos],m.windowsize)
+    vocab = m.vocab
+    word_ids = []
+    for i in 1:maxlength
+        scores = softmax(pred_v1(m,hist))
+        new_word_index = vocab.w2i[sample(vocab.i2w,Weights(scores))]
+
+        if new_word_index == m.vocab.eos
+            break
+        end
+        push!(word_ids,new_word_index)
+        hist = [ hist[2:end]; new_word_index ]
+    end
+    return join(vocab.i2w[word_ids]," ")
+
+end
+
+@info "Testing generate"
+s = generate(model, maxlength=5)
+@test s isa String
+@test length(split(s)) <= 5
