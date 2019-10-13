@@ -40,27 +40,27 @@ struct TextReader
     vocab::Vocab
 end
 
-word_2_ind(dict,x) = get!(dict, x, 1+length(dict))
+word2ind(dict,x) = get(dict, x, 1)
 
 function Base.iterate(r::TextReader, s=nothing)
     ## Your code here
     if s == nothing
         state = open(r.file)
-        println("Initialize")
-        iterate(r,state)
+        r,state
     else
         if eof(s) == true 
             close(s)
-            print("Closed")
             return nothing
         else
-            println("Continue")
             line = readline(s)
             
-            sentence = r.vocab.tokenizer(line, ['.',' '], keepempty = false)
-            word_2_ind.(r.vocab.w2i,sentence)
-            
-            return iterate(r, s)
+            sent = r.vocab.tokenizer(line, ['.',' '], keepempty = false)
+            sent_ind = []
+            for word in sent
+                ind = word2ind(r.vocab.w2i,word)
+                push!(sent_ind,ind)
+            end
+            return sent_ind, s
         end
     end
 end
