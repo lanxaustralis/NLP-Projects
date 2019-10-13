@@ -172,8 +172,22 @@ function scores_v1(model, sent)
     hcat(scores...)
 end
 
-# sent = first(train_sentences)
-# @test size(scores_v1(model, sent)) == (length(train_vocab.i2w), length(sent)+1)
+sent = Int64[]
+open(file) do f
+    sentence = split(first(eachline(f)), ['.',' '], keepempty = false)
+
+    for word in sentence
+        id = model.vocab.w2i[word]
+        if id < 0
+            id = 1
+        end
+        push!(sent,id)
+    end
+    close(f)
+
+end
+#sent = first(train_sentences)
+@test size(scores_v1(model, sent)) == (length(train_vocab.i2w), length(sent)+1)
 
 function generate(m::NNLM; maxlength=30)
     ## Your code here
@@ -198,3 +212,30 @@ end
 s = generate(model, maxlength=5)
 @test s isa String
 @test length(split(s)) <= 5
+
+function pred_v2(m::NNLM, hist::AbstractMatrix{Int})
+    ## Your code here
+    emb_inp = hist
+    emb = dropout(m.embed,m.dropout;seed=1)
+    emb_out = emb(emb_inp)
+
+    hid_inp = reshape(emb_out,:,size(hist)[2]) # transforms into an :,7 matrix
+    hid = dropout(m.hidden,m.dropout;seed=1)
+    hid_out = tanh.(hid(hid_inp))
+
+    out = m.output(hid_out)
+
+    return out
+end
+
+function scores_v2(model, sent)
+    hist = [ repeat([ model.vocab.eos ], model.windowsize); sent ]
+    hist = vcat((hist[i:end+i-model.windowsize]' for i in 1:model.windowsize)...)
+    @assert size(hist) == (model.windowsize, length(sent)+1)
+    return pred_v2(model, hist)
+end
+
+#sent = first(test_sentences)
+s1, s2 = scores_v1(model, sent), scores_v2(model, sent)
+@test size(s1) == size(s2) == (length(train_vocab.i2w), length(sent)+1)
+@test s1 ≈ s2
