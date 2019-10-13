@@ -35,6 +35,52 @@ end
 file = "test_text.txt"
 v = Vocab(file)
 
+struct TextReader
+    file::String
+    vocab::Vocab
+end
+
+word_2_ind(dict,x) = get!(dict, x, 1+length(dict))
+
+function Base.iterate(r::TextReader, s=nothing)
+    ## Your code here
+    if s == nothing
+        state = open(r.file)
+        println("Initialize")
+        iterate(r,state)
+    else
+        if eof(s) == true 
+            close(s)
+            print("Closed")
+            return nothing
+        else
+            println("Continue")
+            line = readline(s)
+            
+            sentence = r.vocab.tokenizer(line, ['.',' '], keepempty = false)
+            word_2_ind.(r.vocab.w2i,sentence)
+            
+            return iterate(r, s)
+        end
+    end
+end
+
+# These are some optional functions that can be defined for iterators. They are required for
+# `collect` to work, which converts an iterator to a regular array.
+
+Base.IteratorSize(::Type{TextReader}) = Base.SizeUnknown()
+Base.IteratorEltype(::Type{TextReader}) = Base.HasEltype()
+Base.eltype(::Type{TextReader}) = Vector{Int}
+
+#- 
+
+@info "Testing TextReader"
+train_sentences = (TextReader("test_text.txt", v))
+@test length(first(train_sentences)) == 24
+@test length(collect(train_sentences)) == 42068
+@test length(collect(valid_sentences)) == 3370
+@test length(collect(test_sentences)) == 3761
+
 struct Embed; w; end
 
 function Embed(vocabsize::Int, embedsize::Int)
