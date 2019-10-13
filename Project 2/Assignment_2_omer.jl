@@ -219,7 +219,7 @@ function pred_v2(m::NNLM, hist::AbstractMatrix{Int})
     emb_out = m.embed(hist)
     emb_out = dropout(reshape(emb_out,:,size(hist)[2]),m.dropout;seed=1)
 
-    hid_inp =  emb_out# transforms into an :,7 matrix
+    hid_inp =  emb_out
     hid_out = tanh.(m.hidden(hid_inp))
     hid_out = dropout(hid_out,m.dropout;seed=1)
 
@@ -239,3 +239,34 @@ end
 s1, s2 = scores_v1(model, sent), scores_v2(model, sent)
 @test size(s1) == size(s2) == (length(train_vocab.i2w), length(sent)+1)
 @test s1 ≈ s2
+
+function pred_v3(m::NNLM, hist::Array{Int})
+    emb_out = m.embed(hist[:,:,1])
+    for entry in 2:size(hist)[ndims(hist)] # every entry
+        curr_emb = m.embed(hist[:,:,entry])
+        emb_out = cat(emb_out,curr_emb;dims=ndims(hist)+1)
+    end
+
+    emb_out = dropout(reshape(emb_out,:,size(hist)[2]*size(hist)[3]),m.dropout;seed=1)
+
+    hid_inp =  emb_out #
+    hid_out = tanh.(m.hidden(hid_inp))
+    hid_out = dropout(hid_out,m.dropout;seed=1)
+
+    out = reshape(m.output(hid_out),:,size(hist)[2],size(hist)[3])
+end
+
+#-
+
+@info "Testing pred_v3"
+
+function scores_v3(model, sent)
+    hist = [ repeat([ model.vocab.eos ], model.windowsize); sent ]
+    hist = vcat((hist[i:end+i-model.windowsize]' for i in 1:model.windowsize)...)
+    @assert size(hist) == (model.windowsize, length(sent)+1)
+    hist = reshape(hist, size(hist,1), 1, size(hist,2))
+    return pred_v3(model, hist)
+end
+
+#sent = first(train_sentences)
+@test scores_v2(model, sent) ≈ scores_v3(model, sent)[:,1,:]
