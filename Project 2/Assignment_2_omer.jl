@@ -141,12 +141,13 @@ function pred_v1(m::NNLM, hist::AbstractVector{Int})
     @assert length(hist) == m.windowsize
     ## Your code here
     emb_inp = reshape(hist,m.windowsize,1)
-    emb = dropout(m.embed,m.dropout;seed=1)
-    emb_out = emb(emb_inp)
+    emb_out = m.embed(emb_inp)
+    emb_out = dropout(emb_out,m.dropout;seed=1)
 
     hid_inp = vec(emb_out)
-    hid = dropout(m.hidden,m.dropout;seed=1)
-    hid_out = tanh.(hid(hid_inp))
+    hid_out = tanh.(m.hidden(hid_inp))
+    hid_out = dropout(hid_out,m.dropout;seed=1)
+
 
     out = m.output(hid_out)
 
@@ -215,13 +216,12 @@ s = generate(model, maxlength=5)
 
 function pred_v2(m::NNLM, hist::AbstractMatrix{Int})
     ## Your code here
-    emb_inp = hist
-    emb = dropout(m.embed,m.dropout;seed=1)
-    emb_out = emb(emb_inp)
+    emb_out = m.embed(hist)
+    emb_out = dropout(reshape(emb_out,:,size(hist)[2]),m.dropout;seed=1)
 
-    hid_inp = reshape(emb_out,:,size(hist)[2]) # transforms into an :,7 matrix
-    hid = dropout(m.hidden,m.dropout;seed=1)
-    hid_out = tanh.(hid(hid_inp))
+    hid_inp =  emb_out# transforms into an :,7 matrix
+    hid_out = tanh.(m.hidden(hid_inp))
+    hid_out = dropout(hid_out,m.dropout;seed=1)
 
     out = m.output(hid_out)
 
