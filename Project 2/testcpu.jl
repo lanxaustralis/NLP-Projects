@@ -6,8 +6,12 @@ const datadir = "nn4nlp-code/data/ptb"
 isdir(datadir) || run(`git clone https://github.com/neubig/nn4nlp-code.git`)
 
 # Change wrt GPU instances
-#param(dims...) = Param(KnetArray(0.01f0 * randn(Float32, dims...)))
+# param(dims...) = Param(KnetArray(0.01f0 * randn(Float32, dims...)))
+# Knet.param(dims...) = Param(Array(0.01f0 * randn(Float32, dims...)))
+# Values are not the same as they are supposed to be, hence we use the inner atype
 
+#array_type=KnetArray # For GPU instances
+array_type=Array # For CPU instances
 # The Abstraction of the Vocabulary
 struct Vocab
     w2i::Dict{String,Int}
@@ -131,25 +135,22 @@ train_sentences, valid_sentences, test_sentences =
 struct Embed; w; end
 
 function Embed(vocabsize::Int, embedsize::Int)
-    return Embed(param(embedsize,vocabsize))
+    return Embed(param(embedsize,vocabsize;atype=array_type))
 end
 
 function (l::Embed)(x)
-    W = l.w
-    L = param((size(W))[1],size(x)...)
-    # for i in range(1,stop=sx[1])
-    #     for j in range(1,stop=sx[2])
-    #         L[:,i,j] = W[:,x[i,j]]
-    #     end
+    # W = l.w
+    # L = param((size(W))[1],size(x)...;atype=array_type)
+    # if ndims(x)==1
+    #     L = W[:,x]
+    # else
+    #     # for col in 1:size(x)[2]
+    #     #     L[:,:,col] = W[:,x[:,col]]
+    #     # end
+    #     L = W[:,x[:,:]]
     # end
-    if ndims(x)==1
-        L = W[:,x]
-    else
-        for col in 1:size(x)[2]
-            L[:,:,col] = W[:,x[:,col]]
-        end
-    end
-    return L
+
+    return l.w[:,x] # it seems far efficient :)
 end
 
 # Testing the Embed
@@ -165,8 +166,8 @@ output = embed(input)
 struct Linear; w; b; end
 
 function Linear(inputsize::Int, outputsize::Int)
-    w = param(outputsize,inputsize)
-    b = param0(outputsize)
+    w = param(outputsize,inputsize;atype=array_type)
+    b = param0(outputsize;atype=array_type)
     return Linear(w,b)
 end
 
@@ -260,7 +261,7 @@ function generate(m::NNLM; maxlength=30)
     word_ids = []
     for i in 1:maxlength
         scores = softmax(pred_v1(m,hist))
-        new_word_index = vocab.w2i[sample(vocab.i2w,Weights(scores))]
+        new_word_index = vocab.w2i[sample(vocab.i2w,weights(scores))]
 
         if new_word_index == m.vocab.eos
             break
@@ -340,7 +341,8 @@ trn100 = ((model,x) for x in collect(take(train_sentences, 100)))
 
 # Function to predict in parallel
 function pred_v2(m::NNLM, hist::AbstractMatrix{Int})
-    emb_out = m.embed(hist)
+    emb_inp = hist
+    emb_out = m.embed(emb_inp)
     emb_out = dropout(reshape(emb_out,:,size(hist)[2]),m.dropout;seed=1)
 
     hid_inp =  emb_out
@@ -376,7 +378,6 @@ function loss_v2(m::NNLM, sent::AbstractVector{Int}; average = true)
     average && return mean(nll(pred_v2(m,hist),[ sent; model.vocab.eos ]))
     return nll(pred_v2(m,hist),[ sent; model.vocab.eos ],average=false)
 
-
 end
 
 # Testing new loss function
@@ -391,7 +392,7 @@ tst100 = collect(take(test_sentences, 100))
 tst10k = collect(take(train_sentences, 10000))
 @time maploss(loss_v2, model, tst10k)
 
-### SGD still fails !!!
+
 @info "Timing loss_v2 training with 1000 sentences"
 trn1k = ((model,x) for x in collect(take(train_sentences, 1000)))
 @time sgd!(loss_v2, trn1k)
@@ -399,7 +400,8 @@ trn1k = ((model,x) for x in collect(take(train_sentences, 1000)))
 
 # New format of the pred with batches
 function pred_v3(m::NNLM, hist::Array{Int})
-    emb_out = m.embed(hist[:,:,1])
+    emb_inp = hist[:,:,1]
+    emb_out = m.embed(emb_inp)
     for entry in 2:size(hist)[ndims(hist)] # every entry
         curr_emb = m.embed(hist[:,:,entry])
         emb_out = cat(emb_out,curr_emb;dims=ndims(hist)+1)
