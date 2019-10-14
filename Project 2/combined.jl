@@ -5,6 +5,9 @@ macro size(z, s); esc(:(@assert (size($z) == $s) string(summary($z),!=,$s))); en
 const datadir = "nn4nlp-code/data/ptb"
 isdir(datadir) || run(`git clone https://github.com/neubig/nn4nlp-code.git`)
 
+# Change wrt GPU instances
+param(dims...) = Param(KnetArray(0.01f0 * randn(Float32, dims...)))
+
 # The Abstraction of the Vocabulary
 struct Vocab
     w2i::Dict{String,Int}
@@ -133,11 +136,17 @@ end
 
 function (l::Embed)(x)
     W = l.w
-    sx = size(x)
-    L = Array{Float64}(undef, size(W)[1],sx[1],sx[2])
-    for i in range(1,stop=sx[1])
-        for j in range(1,stop=sx[2])
-            L[:,i,j] = W[:,x[i,j]]
+    L = param((size(W))[1],size(x)...)
+    # for i in range(1,stop=sx[1])
+    #     for j in range(1,stop=sx[2])
+    #         L[:,i,j] = W[:,x[i,j]]
+    #     end
+    # end
+    if ndims(x)==1
+        L = W[:,x]
+    else
+        for col in 1:size(x)[2]
+            L[:,:,col] = W[:,x[:,col]]
         end
     end
     return L
@@ -209,7 +218,7 @@ model = NNLM(train_vocab, HIST, EMBED, HIDDEN, DROPOUT)
 function pred_v1(m::NNLM, hist::AbstractVector{Int})
     @assert length(hist) == m.windowsize
 
-    emb_inp = reshape(hist,m.windowsize,1)
+    emb_inp = hist
     emb_out = m.embed(emb_inp)
     emb_out = dropout(emb_out,m.dropout;seed=1)
 
@@ -320,14 +329,14 @@ avgloss = maploss(loss_v1, model, tst100)
 @test tot/cnt ≈ avgloss
 
 # Timing loss for v1
-@info "Timing loss_v1 with 1000 sentences"
-tst1000 = collect(take(test_sentences, 1000))
-@time maploss(loss_v1, model, tst1000)
+# @info "Timing loss_v1 with 1000 sentences"
+# tst1000 = collect(take(test_sentences, 1000))
+# @time maploss(loss_v1, model, tst1000)
 
 ## Gives error check or ask !!!!
-# @info "Timing loss_v1 training with 100 sentences"
-# trn100 = ((model,x) for x in collect(take(train_sentences, 100)))
-# @time progress(sgd!(loss_v1, trn100))
+@info "Timing loss_v1 training with 100 sentences"
+trn100 = ((model,x) for x in collect(take(train_sentences, 100)))
+@time progress(sgd!(loss_v1, trn100))
 
 # Function to predict in parallel
 function pred_v2(m::NNLM, hist::AbstractMatrix{Int})
@@ -383,9 +392,9 @@ tst10k = collect(take(train_sentences, 10000))
 @time maploss(loss_v2, model, tst10k)
 
 ### SGD still fails !!!
-# @info "Timing loss_v2 training with 1000 sentences"
-# trn1k = ((model,x) for x in collect(take(train_sentences, 1000)))
-# @time sgd!(loss_v2, trn1k)
+@info "Timing loss_v2 training with 1000 sentences"
+trn1k = ((model,x) for x in collect(take(train_sentences, 1000)))
+@time sgd!(loss_v2, trn1k)
 
 
 # New format of the pred with batches
