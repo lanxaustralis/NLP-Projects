@@ -127,7 +127,7 @@ struct Embed; w; end
 
 function Embed(vocabsize::Int, embedsize::Int)
     ## Your code here
-    return Embed(param(vocabsize,embedsize))
+    return Embed(param(embedsize,vocabsize))
 end
 
 function (l::Embed)(x)
@@ -143,12 +143,11 @@ function (l::Embed)(x)
     return L
 end
 
+@info "Testing Embed"
 Knet.seed!(1)
-embed = Embed(10,10)
-input = rand(1:10, 2, 3)
+embed = Embed(100,10)
+input = rand(1:100, 2, 3)
 output = embed(input)
-
-output
 @test size(output) == (10, 2, 3)
 @test norm(output) ≈ 0.59804f0
 
@@ -184,7 +183,7 @@ function NNLM(vocab::Vocab, windowsize::Int, embedsize::Int, hiddensize::Int, dr
     ## Your code here
     vocabsize = length(v.i2w)
     ## NNLM (vocab::Vocab,  windowsize::Int,  embed::Embed,  hidden::Linear,  output::Linear,  dropout::Int)
-    NNLM(vocab, windowsize, Embed(embedsize,vocabsize),Linear(embedsize*windowsize,hiddensize),Linear(hiddensize,vocabsize),dropout)
+    NNLM(vocab, windowsize, Embed(vocabsize,embedsize),Linear(embedsize*windowsize,hiddensize),Linear(hiddensize,vocabsize),dropout)
 end
 
 #-
@@ -199,7 +198,7 @@ VOCAB = length(v.i2w)
 
 @info "Testing NNLM"
 model = NNLM(train_vocab, HIST, EMBED, HIDDEN, DROPOUT)
-@test model.vocab === train_vocab
+@test model.vocab === v
 @test model.windowsize === HIST
 @test size(model.embed.w) == (EMBED,VOCAB)
 @test size(model.hidden.w) == (HIDDEN,HIST*EMBED)
@@ -257,7 +256,7 @@ function loss_v1(m::NNLM, sent::AbstractVector{Int}; average = true)
     if average
         return mean(total_loss)
     else
-        return (total_loss, length(sent))
+        return (sum(total_loss), length(sent))
     end
 end
 
@@ -295,3 +294,100 @@ avgloss = maploss(loss_v1, model, tst100)
 (tot, cnt) = maploss(loss_v1, model, tst100, average = false)
 @test cnt == length(tst100) + sum(length.(tst100))
 @test tot/cnt ≈ avgloss
+
+function generate(m::NNLM; maxlength=30)
+    ## Your code here
+    hist = repeat([m.vocab.eos],m.windowsize)
+    vocab = m.vocab
+    word_ids = []
+    for i in 1:maxlength
+        scores = softmax(pred_v1(m,hist))
+        new_word_index = vocab.w2i[sample(vocab.i2w,Weights(scores))]
+
+        if new_word_index == m.vocab.eos
+            break
+        end
+        push!(word_ids,new_word_index)
+        hist = [ hist[2:end]; new_word_index ]
+    end
+    return join(vocab.i2w[word_ids]," ")
+
+end
+
+@info "Testing generate"
+s = generate(model, maxlength=5)
+@test s isa String
+@test length(split(s)) <= 5
+
+function pred_v2(m::NNLM, hist::AbstractMatrix{Int})
+    ## Your code here
+    emb_out = m.embed(hist)
+    emb_out = dropout(reshape(emb_out,:,size(hist)[2]),m.dropout;seed=1)
+
+    hid_inp =  emb_out
+    hid_out = tanh.(m.hidden(hid_inp))
+    hid_out = dropout(hid_out,m.dropout;seed=1)
+
+    out = m.output(hid_out)
+
+    return out
+end
+
+function scores_v2(model, sent)
+    hist = [ repeat([ model.vocab.eos ], model.windowsize); sent ]
+    hist = vcat((hist[i:end+i-model.windowsize]' for i in 1:model.windowsize)...)
+    @assert size(hist) == (model.windowsize, length(sent)+1)
+    return pred_v2(model, hist)
+end
+
+#sent = first(test_sentences)
+s1, s2 = scores_v1(model, sent), scores_v2(model, sent)
+@test size(s1) == size(s2) == (length(train_vocab.i2w), length(sent)+1)
+@test s1 ≈ s2
+
+
+function loss_v2(m::NNLM, sent::AbstractVector{Int}; average = true)
+    ## Your code here
+    hist = [ repeat([ model.vocab.eos ], model.windowsize); [1,2,4,5,6,7] ]
+    hist = vcat((hist[i:end+i-model.windowsize]' for i in 1:model.windowsize)...)
+    
+    if average
+        return mean(nll.(pred_v2(m,hist),sent))
+    else
+        return (sum(nll.(pred_v2(m,hist),sent)), length(sent))
+    end
+    
+end
+
+function pred_v3(m::NNLM, hist::Array{Int})
+    emb_out = m.embed(hist[:,:,1])
+    for entry in 2:size(hist)[ndims(hist)] # every entry
+        curr_emb = m.embed(hist[:,:,entry])
+        emb_out = cat(emb_out,curr_emb;dims=ndims(hist)+1)
+    end
+
+    emb_out = dropout(reshape(emb_out,:,size(hist)[2]*size(hist)[3]),m.dropout;seed=1)
+
+    hid_inp =  emb_out #
+    hid_out = tanh.(m.hidden(hid_inp))
+    hid_out = dropout(hid_out,m.dropout;seed=1)
+
+    out = reshape(m.output(hid_out),:,size(hist)[2],size(hist)[3])
+end
+
+#-
+
+@info "Testing pred_v3"
+
+function scores_v3(model, sent)
+    hist = [ repeat([ model.vocab.eos ], model.windowsize); sent ]
+    hist = vcat((hist[i:end+i-model.windowsize]' for i in 1:model.windowsize)...)
+    @assert size(hist) == (model.windowsize, length(sent)+1)
+    hist = reshape(hist, size(hist,1), 1, size(hist,2))
+    return pred_v3(model, hist)
+end
+
+#sent = first(train_sentences)
+@test scores_v2(model, sent) ≈ scores_v3(model, sent)[:,1,:]
+
+
