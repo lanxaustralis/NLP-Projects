@@ -1,5 +1,8 @@
-
 using Knet, Base.Iterators, IterTools, LinearAlgebra, StatsBase, Test
+macro size(z, s); esc(:(@assert (size($z) == $s) string(summary($z),!=,$s))); end # for debugging
+
+const datadir = "nn4nlp-code/data/ptb"
+isdir(datadir) || run(`git clone https://github.com/neubig/nn4nlp-code.git`)
 
 struct Vocab
     w2i::Dict{String,Int}
@@ -11,29 +14,67 @@ end
 
 function Vocab(file::String; tokenizer=split, vocabsize=Inf, mincount=1, unk="<unk>", eos="<s>")
     ## Your code here
+    vocab_freq = Dict{String,Int64}(unk => 1, eos => 1)
+    w2i = Dict{String, Int64}(unk => 1, eos => 2)
+    i2w = Vector{String}()
+    push!(i2w, unk)
+    push!(i2w, eos)
+
     open(file) do f
-        w2i = Dict{String, Int64}(unk => 1, eos => 2)
-        i2w = Vector{String}()
-        push!(i2w, unk)
-        push!(i2w, eos)
-        
         for line in eachline(f)
-            sentence = tokenizer(line, ['.',' '], keepempty = false)
+            sentence = strip(lowercase(line))
+            sentence = tokenizer(line, [' '], keepempty = false)
 
             for word in sentence
-                ind = (get!(w2i, word, 1+length(w2i)))
-                if (length(i2w) < ind)
-                    push!(i2w, word)
-                end
+                word == unk && continue
+                word == eos && continue # They are default ones to be added later
+                vocab_freq[word] = get!(vocab_freq, word, 0) + 1
             end
         end
         close(f)
-        return Vocab(w2i, i2w, 1, 2, tokenizer)
     end
+
+
+    # End of vanilla implementation of the vocaulary
+    # From here we must add the mincount and vocabsize properties
+    # We must change the first two property of the vocab wrt those paramaters
+    vocab_freq = sort!(
+        collect(vocab_freq),
+        by = tuple -> last(tuple),
+        rev = true,
+    )
+
+    if length(vocab_freq)>vocabsize - 2 # eos and unk ones
+        vocab_freq = vocab_freq[1:vocabsize-2] # trim to fit the size
+    end
+
+    vocab_freq = reverse(vocab_freq)
+
+    while true
+        length(vocab_freq)==0 && break
+        word,freq = vocab_freq[1]
+        freq>=mincount && break # since it is already ordered
+        vocab_freq = vocab_freq[2:length(vocab_freq)]
+    end
+    #pushfirst!(vocab_freq,unk=>1,eos=>1) # freq does not matter, just adding the
+    for i in 1:length(vocab_freq)
+        word, freq = vocab_freq[i]
+        ind = (get!(w2i, word, 1+length(w2i)))
+        (length(i2w) < ind) && push!(i2w, word)
+    end
+
+    return Vocab(w2i, i2w, 1, 2, tokenizer)
 end
 
-file = "test_text.txt"
-v = Vocab(file)
+@info "Testing Vocab"
+f = "$datadir/train.txt"
+v = Vocab(f)
+@test all(v.w2i[w] == i for (i,w) in enumerate(v.i2w))
+@test length(Vocab(f).i2w) == 10000
+@test length(Vocab(f, vocabsize=1234).i2w) == 1234
+@test length(Vocab(f, mincount=5).i2w) == 9859
+
+train_vocab = Vocab("$datadir/train.txt")
 
 struct TextReader
     file::String
@@ -46,21 +87,21 @@ function Base.iterate(r::TextReader, s=nothing)
     ## Your code here
     if s == nothing
         state = open(r.file)
-        r,state
+        Base.iterate(r,state)
     else
-        if eof(s) == true 
+        if eof(s) == true
             close(s)
             return nothing
         else
             line = readline(s)
-            
-            sent = r.vocab.tokenizer(line, ['.',' '], keepempty = false)
+            line = strip(lowercase(line))
+            sent = r.vocab.tokenizer(line, [' '], keepempty = false)
             sent_ind = []
             for word in sent
                 ind = word2ind(r.vocab.w2i,word)
                 push!(sent_ind,ind)
             end
-            return sent_ind, s
+            return (sent_ind, s)
         end
     end
 end
@@ -72,10 +113,11 @@ Base.IteratorSize(::Type{TextReader}) = Base.SizeUnknown()
 Base.IteratorEltype(::Type{TextReader}) = Base.HasEltype()
 Base.eltype(::Type{TextReader}) = Vector{Int}
 
-#- 
+#-
 
 @info "Testing TextReader"
-train_sentences = (TextReader("test_text.txt", v))
+train_sentences, valid_sentences, test_sentences =
+    (TextReader("$datadir/$file.txt", train_vocab) for file in ("train","valid","test"))
 @test length(first(train_sentences)) == 24
 @test length(collect(train_sentences)) == 42068
 @test length(collect(valid_sentences)) == 3370
@@ -211,7 +253,7 @@ function loss_v1(m::NNLM, sent::AbstractVector{Int}; average = true)
         push!(total_loss, nll(s, next_word))
         hist = [hist[2:end];next_word]
     end
-    
+
     if average
         return mean(total_loss)
     else
@@ -236,7 +278,7 @@ function maploss(lossfn, model, data; average = true)
         push!(total_loss, loss[1])
         num_words = num_words + loss[2]
     end
-    
+
     if average
         return mean(total_loss)
     else
