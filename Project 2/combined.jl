@@ -1,3 +1,4 @@
+
 using Knet, Base.Iterators, IterTools, LinearAlgebra, StatsBase, Test
 macro size(z, s); esc(:(@assert (size($z) == $s) string(summary($z),!=,$s))); end # for debugging
 
@@ -432,6 +433,13 @@ a = [1 2 1 1 1; 2 2 2 1 1; 1 1 2 2 2; 1 1 2 2 1]
 # Loss v3
 function loss_v3(m::NNLM, batch::AbstractMatrix{Int}; average = true)
     ## Your code here
+    hist = [ repeat([ model.vocab.eos ], model.windowsize); sent ]
+    hist = vcat((hist[i:end+i-model.windowsize]' for i in 1:model.windowsize)...)
+    @assert size(hist) == (model.windowsize, length(sent)+1)
+    hist = reshape(hist, size(hist,1), 1, size(hist,2))
+    
+    average && return mean(nll(pred_v3(m,hist),[ sent; model.vocab.eos ]))
+    return nll(pred_v3(m,hist),[ sent; model.vocab.eos ],average=false)
 end
 
 # Testing loss v3
