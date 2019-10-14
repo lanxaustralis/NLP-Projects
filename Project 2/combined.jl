@@ -1,3 +1,4 @@
+
 using Knet, Base.Iterators, IterTools, LinearAlgebra, StatsBase, Test
 macro size(z, s); esc(:(@assert (size($z) == $s) string(summary($z),!=,$s))); end # for debugging
 
@@ -306,8 +307,8 @@ function maploss(lossfn, model, data; average = true)
 
     average && return sum(total_loss)/num_words
     return (sum(total_loss), num_words)
-    end
 end
+
 
 # Testing maploss
 @info "Testing maploss"
@@ -397,7 +398,7 @@ function pred_v3(m::NNLM, hist::Array{Int})
 
     emb_out = dropout(reshape(emb_out,:,size(hist)[2]*size(hist)[3]),m.dropout;seed=1)
 
-    hid_inp =  emb_out #
+    hid_inp =  emb_out
     hid_out = tanh.(m.hidden(hid_inp))
     hid_out = dropout(hid_out,m.dropout;seed=1)
 
@@ -445,7 +446,20 @@ a = [1 2 1 1 1; 2 2 2 1 1; 1 1 2 2 2; 1 1 2 2 1]
 ##### We are here
 # Loss v3
 function loss_v3(m::NNLM, batch::AbstractMatrix{Int}; average = true)
-    ## Your code here
+    batch_size = first(size(batch))
+    hist = hcat(repeat([ model.vocab.eos ], batch_size, model.windowsize), batch)
+
+    long_length = size(hist)[2]-model.windowsize+1# length of the long sentence
+    upd_hist = repeat([ model.vocab.eos ], model.windowsize , batch_size, long_length)
+
+    for batch_order in 1:batch_size
+        plane = vcat((hist[batch_order,i:end+i-model.windowsize]' for i in 1:model.windowsize)...)
+        upd_hist[:,batch_order,:] = reshape(plane, model.windowsize, 1, long_length)
+    end
+
+
+    average && return mean(nll(pred_v3(m,upd_hist),mask!(hcat(batch,repeat([model.vocab.eos],batch_size)),model.vocab.eos)))
+    return nll(pred_v3(m,upd_hist),mask!(hcat(batch,repeat([model.vocab.eos],batch_size)),model.vocab.eos),average=false)
 end
 
 # Testing loss v3
