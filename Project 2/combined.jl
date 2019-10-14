@@ -418,10 +418,22 @@ end
 sent = first(train_sentences)
 @test scores_v2(model, sent) ≈ scores_v3(model, sent)[:,1,:]
 
-##### We are here
 # Mask
 function mask!(a,pad)
-    ## Your code here
+    row,col = size(a)
+    col==1 && return a
+
+    for i in 1:row
+        for j in col:-1:2
+            if a[i,(j-1)]==pad
+                a[i,j]=0
+            else
+                break
+            end
+        end
+
+    end
+    return a
 end
 
 # Testing mask
@@ -429,6 +441,8 @@ end
 a = [1 2 1 1 1; 2 2 2 1 1; 1 1 2 2 2; 1 1 2 2 1]
 @test mask!(a,1) == [1 2 1 0 0; 2 2 2 1 0; 1 1 2 2 2; 1 1 2 2 1]
 
+
+##### We are here
 # Loss v3
 function loss_v3(m::NNLM, batch::AbstractMatrix{Int}; average = true)
     ## Your code here
