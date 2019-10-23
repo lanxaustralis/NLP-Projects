@@ -20,7 +20,7 @@ Pkg.build("CuArrays")
 using CuArrays: CuArrays, usage_limit
 import CuArrays: CuArray
 
-CuArrays.usage_limit[] = 6_000_000_000
+CuArrays.usage_limit[] = 11_000_000_000
 
 #CUARRAYS_MEMORY_LIMIT = 8_000_000_000
 # Change wrt GPU instances
@@ -96,8 +96,8 @@ end
 
 # Testing the Vocabulary
 # @info "Testing Vocab"
-# f = "$datadir/train.txt"
-# v = Vocab(f)
+f = "$datadir/train.txt"
+v = Vocab(f)
 # @test all(v.w2i[w] == i for (i,w) in enumerate(v.i2w))
 # @test length(Vocab(f).i2w) == 10000
 # @test length(Vocab(f, vocabsize=1234).i2w) == 1234
@@ -143,8 +143,7 @@ Base.eltype(::Type{TextReader}) = Vector{Int}
 
 # Testing Iterator
 # @info "Testing TextReader"
-# train_sentences, valid_sentences, test_sentences =
-#     (TextReader("$datadir/$file.txt", train_vocab) for file in ("train","valid","test"))
+train_sentences, valid_sentences, test_sentences = (TextReader("$datadir/$file.txt", train_vocab) for file in ("train","valid","test"))
 # @test length(first(train_sentences)) == 24
 # @test length(collect(train_sentences)) == 42068
 # @test length(collect(valid_sentences)) == 3370
@@ -174,7 +173,7 @@ end
 
 # Testing the Embed
 # @info "Testing Embed"
-# Knet.seed!(1)
+Knet.seed!(1)
 # embed = Embed(100,10)
 # input = rand(1:100, 2, 3)
 # output = embed(input)
@@ -219,12 +218,12 @@ end
 HIST = 3
 EMBED = 128
 HIDDEN = 128
-DROPOUT = 0.5
+DROPOUT = 0
 VOCAB = length(train_vocab.i2w)
 
 # Testing the NNLM
 # @info "Testing NNLM"
-# model = NNLM(train_vocab, HIST, EMBED, HIDDEN, DROPOUT)
+model = NNLM(train_vocab, HIST, EMBED, HIDDEN, DROPOUT)
 # @test model.vocab === train_vocab
 # @test model.windowsize === HIST
 # @test size(model.embed.w) == (EMBED,VOCAB)
@@ -270,7 +269,7 @@ function scores_v1(model, sent)
 end
 
 # Testing with scores
-# sent = first(train_sentences)
+sent = first(train_sentences)
 # @test size(scores_v1(model, sent)) == (length(train_vocab.i2w), length(sent)+1)
 
 # Function to generate new words
