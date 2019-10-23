@@ -1,6 +1,15 @@
-
+import Pkg
 using Knet, Base.Iterators, IterTools, LinearAlgebra, StatsBase, Test
 macro size(z, s); esc(:(@assert (size($z) == $s) string(summary($z),!=,$s))); end # for debugging
+Pkg.update()
+pkgs = Pkg.installed()
+
+for package in keys(pkgs)
+    if pkgs[package] == nothing
+        pkgs[package] = VersionNumber("0.0.1")
+    end
+    println("Package name: ", package, " Version: ", pkgs[package])
+end
 
 const datadir = "nn4nlp-code/data/ptb"
 isdir(datadir) || run(`git clone https://github.com/neubig/nn4nlp-code.git`)
@@ -85,7 +94,7 @@ v = Vocab(f)
 @test length(Vocab(f, vocabsize=1234).i2w) == 1234
 @test length(Vocab(f, mincount=5).i2w) == 9859
 
-train_vocab = Vocab("$datadir/train.txt") # The backbone vocab of the model
+train_vocab = v # The backbone vocab of the model
 
 # Abstraction of the TextReader
 struct TextReader
@@ -336,7 +345,7 @@ tst1000 = collect(take(test_sentences, 1000))
 GC.gc();@time maploss(loss_v1, model, tst1000)
 
 
-
+# First Problem Occurs Here / Changing 100 to 10 works
 @info "Timing loss_v1 training with 100 sentences"
 GC.gc();trn100 = ((model,x) for x in collect(take(train_sentences, 100)))
 GC.gc();@time progress(sgd!(loss_v1, trn100))  # Memory allocation issues force us to add these collectors
