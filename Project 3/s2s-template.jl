@@ -32,45 +32,58 @@ struct Vocab
     tokenizer
 end
 
-function Vocab(file::String;tokenizer=split, vocabsize=Inf, mincount=1, unk="<unk>", eos="<s>")
+function Vocab(file::String; tokenizer=split, vocabsize=Inf, mincount=1, unk="<unk>", eos="<s>")
+    vocab_freq = Dict{String,Int64}(unk => 1, eos => 1)
+    w2i = Dict{String, Int64}(unk => 2, eos => 1)
+    i2w = Vector{String}()
 
-    w2i= Dict{String,Int}()
-    data = [tokenizer(line) for line in eachline(file)]
-    countDict = Dict()
-    countDict1 = Dict()
+    push!(i2w, eos)
+    push!(i2w, unk)
 
-    countD(x)= countDict[x]= get(countDict,x,0)+1
-    for line in data
-        countD.(line)
-    end
-    if(vocabsize<length(data))
-        juliachars = sort(collect(keys(countDict)), by=(x->countDict[x]), rev=true)[1:vocabsize-1]
-        for key in juliachars
-            countDict1[key]= countDict[key]
+    open(file) do f
+        for line in eachline(f)
+            sentence = strip(lowercase(line))
+            sentence = tokenizer(line, [' '], keepempty = false)
+
+            for word in sentence
+                word == unk && continue
+                word == eos && continue # They are default ones to be added later
+                vocab_freq[word] = get!(vocab_freq, word, 0) + 1
+            end
         end
-        countDict = countDict1
+        close(f)
     end
 
 
-    for i in collect(keys(countDict))
-        if(countDict[i]<mincount)
-            delete!(countDict,i)
-        end
+    # End of vanilla implementation of the vocaulary
+    # From here we must add the mincount and vocabsize properties
+    # We must change the first two property of the vocab wrt those paramaters
+    vocab_freq = sort!(
+        collect(vocab_freq),
+        by = tuple -> last(tuple),
+        rev = true,
+    )
+
+    if length(vocab_freq)>vocabsize - 2 # eos and unk ones
+        vocab_freq = vocab_freq[1:vocabsize-2] # trim to fit the size
     end
 
-    data =collect(keys(countDict))
-    ins(x)= get!(w2i,x,1+length(w2i))
-    if(unk != "")
-        UNK = ins(unk)
-    end
-    if(eos!="")
-        EOS = ins(eos)
-    end
-    ins.(data)
-    i2w = Vector{String}(undef,length(w2i))
-    for (str,id) in w2i; i2w[id] = str; end
-    Vocab(w2i,i2w,1,2,tokenizer)
+    #vocab_freq = reverse(vocab_freq)
 
+    while true
+        length(vocab_freq)==0 && break
+        word,freq = vocab_freq[end]
+        freq>=mincount && break # since it is already ordered
+        vocab_freq = vocab_freq[1:(end - 1)]
+    end
+    #pushfirst!(vocab_freq,unk=>1,eos=>1) # freq does not matter, just adding the
+    for i in 1:length(vocab_freq)
+        word, freq = vocab_freq[i]
+        ind = (get!(w2i, word, 1+length(w2i)))
+        (length(i2w) < ind) && push!(i2w, word)
+    end
+
+    return Vocab(w2i, i2w, 2, 1, tokenizer)
 end
 
 struct TextReader
@@ -319,43 +332,44 @@ end
 
 
 function (s::S2S_v1)(src, tgt; average=true)
-    B,Tx = size(src)
-    Ty = size(tgt,2)-1 # Crop one
-    Ex, Ey = length(model.srcembed([1])), length(model.tgtembed([1]))
+    #B,Tx = size(src,2)
+    B,Ty = size(tgt)
+    Ty -= 1 # Crop one
+    # Ex, Ey = length(model.srcembed([1])), length(model.tgtembed([1]))
 
     rnn_encoder = s.encoder
     rnn_decoder = s.decoder
     project = s.projection
 
-    Lx, Ly = rnn_encoder.numLayers, rnn_decoder.numLayers
-    Hx, Hy = rnn_encoder.hiddenSize, rnn_decoder.hiddenSize
-    Dx = Ly/Lx
+    # Lx, Ly = rnn_encoder.numLayers, rnn_decoder.numLayers
+    # Hx, Hy = rnn_encoder.hiddenSize, rnn_decoder.hiddenSize
+    # Dx = Ly/Lx
 
     emb_out_src = s.srcembed(src)
-    @test size(emb_out_src)== (Ex,B,Tx) # Done
+    #@test size(emb_out_src)== (Ex,B,Tx) # Done
 
     # Safe for repetitive usage
     rnn_encoder.h = 0
     rnn_encoder.c = 0
 
     y_enc = rnn_encoder(emb_out_src)
-    @test size(y_enc) == (Hx*Dx,B,Tx)
+    #@test size(y_enc) == (Hx*Dx,B,Tx)
     h_enc = rnn_encoder.h
-    @test size(h_enc) == (Hx,B,Lx*Dx)
+    #@test size(h_enc) == (Hx,B,Lx*Dx)
     c_enc = rnn_encoder.c
 
     emb_out_tgt = s.tgtembed(tgt[:,1:end-1])
-    @test size(emb_out_tgt)== (Ey,B,Ty)
+    #@test size(emb_out_tgt)== (Ey,B,Ty)
 
     rnn_decoder.h = h_enc
     rnn_decoder.c = c_enc
     y_dec = rnn_decoder(emb_out_tgt)
-    @test size(y_dec)==(Hy,B,Ty)
+    #@test size(y_dec)==(Hy,B,Ty)
 
     project_inp = reshape(y_dec,:,B*Ty)
     project_out = project(project_inp)
 
-    @test size(project_out)==(length(project.b),B*Ty)
+    #@test size(project_out)==(length(project.b),B*Ty)
 
     mask!(tgt,s.tgtvocab.eos)
 
@@ -382,7 +396,6 @@ model = S2S_v1(512, 512, 512, tr_vocab, en_vocab; layers=2, bidirectional=true, 
 # `S2S_v1` that computes loss on a single `(x,y)` pair.
 
 function loss(model, data; average=true)
-    ## Your code here
     total_loss = 0
     total_word = 0
     stopatfirst = true
