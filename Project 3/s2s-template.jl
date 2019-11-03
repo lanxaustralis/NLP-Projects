@@ -218,27 +218,24 @@ Base.eltype(::Type{MTData}) = NTuple{2}
 function Base.iterate(d::MTData, state=nothing)
     if state == nothing
         for b in d.buckets; empty!(b); end
+        state_src,state_tgt = nothing,nothing
+    else
+        state_src,state_tgt = state
     end
     bucket,ibucket = nothing,nothing
-    state_src,state_tgt = nothing,nothing
+
 
     while true
-        if state === nothing
-            iter_src=iterate(d.src)
-            iter_tgt=iterate(d.tgt)
-        else
-            state_src = state[1]
-            state_tgt = state[2]
-            iter_src=iterate(d.src,state_src)
-            iter_tgt=iterate(d.tgt,state_tgt)
-        end
+        iter_src = (state_src === nothing ? iterate(d.src) : iterate(d.src, state_src))
+        iter_tgt = (state_tgt === nothing ? iterate(d.tgt) : iterate(d.tgt, state_tgt))
+
         if iter_src === nothing
             ibucket = findfirst(x -> !isempty(x), d.buckets)
             bucket = (ibucket === nothing ? nothing : d.buckets[ibucket])
             break
         else
             sent_src, state_src = iter_src
-            sent_tgt, state_tgt= iter_tgt
+            sent_tgt, state_tgt = iter_tgt
             if length(sent_src) > d.maxlength || length(sent_src) == 0; continue; end
             ibucket = min(1 + (length(sent_src)-1) ÷ d.bucketwidth, length(d.buckets))
             bucket = d.buckets[ibucket]
@@ -278,9 +275,9 @@ dtrn = MTData(tr_train, en_train)
 ddev = MTData(tr_dev, en_dev)
 dtst = MTData(tr_test, en_test)
 
-# x,y = first(dtst)
-(x,y) = collect(dtst)[2]
-#@test length(collect(dtst)) == 48
+x,y = first(dtst)
+
+@test length(collect(dtst)) == 48
 @test size.((x,y)) == ((128,10),(128,24))
 @test x[1,1] == tr_vocab.eos
 @test x[1,end] != tr_vocab.eos
