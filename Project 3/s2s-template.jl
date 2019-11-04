@@ -7,7 +7,7 @@ import Pkg
 
 using Knet, Test, Base.Iterators, IterTools, Random # , LinearAlgebra, StatsBase
 using AutoGrad: @gcheck  # to check gradients, use with Float64
-Knet.atype() = KnetArray{Float32}  # determines what Knet.param() uses.
+Knet.atype() = Array{Float32}  # determines what Knet.param() uses.
 macro size(z, s); esc(:(@assert (size($z) == $s) string(summary($z),!=,$s))); end # for debugging
 
 Pkg.add("Statistics")
@@ -25,7 +25,7 @@ for package in keys(pkgs)
 end
 
 #array_type=KnetArray # For GPU instances
-array_type=Array # For CPU instances
+#array_type=Array # For CPU instances
 
 
 struct Vocab
@@ -129,7 +129,7 @@ Base.eltype(::Type{TextReader}) = Vector{Int}
 struct Embed; w; end
 
 function Embed(vocabsize::Int, embedsize::Int)
-    Embed(param(embedsize,vocabsize;atype=array_type))
+    Embed(param(embedsize,vocabsize))
 end
 
 function (l::Embed)(x)
@@ -140,7 +140,7 @@ end
 struct Linear; w; b; end
 
 function Linear(inputsize::Int, outputsize::Int)
-    Linear(param(outputsize,inputsize;atype=array_type), param0(outputsize;atype=array_type))
+    Linear(param(outputsize,inputsize), param0(outputsize))
 end
 
 function (l::Linear)(x)
@@ -152,17 +152,16 @@ function mask!(a,pad)
     matr = a
     for j in 1:size(matr)[1]
         i=0
-        while(i<length(matr[j,:])-1)
-            if matr[j,length(matr[j,:])-i-1]!=pad
-                break
+        while i<(length(matr[j,:])-1)
+            matr[j,length(matr[j,:])-i-1]!=pad && break
 
-            elseif matr[j,length(matr[j,:])-i]== pad
-               matr[j,length(matr[j,:])-i]= 0
+            if matr[j,length(matr[j,:])-i]== pad
+                matr[j,length(matr[j,:])-i]= 0
             end
             i+=1
         end
     end
-    return matr
+    matr
 end
 
 # ## Part 0. Load data
@@ -317,13 +316,13 @@ function S2S_v1(hidden::Int,         # hidden size for both the encoder and deco
 
     srcembed = Embed(length(srcvocab.i2w),srcembsz)
 
-    encoder = RNN(srcembsz,hidden,numLayers=layers,bidirectional=bidirectional ,dropout= dropout,usegpu=false,dataType=Float64)
+    encoder = RNN(srcembsz,hidden,numLayers=layers,bidirectional=bidirectional ,dropout= dropout,usegpu=false,dataType=Float32)
 
     tgtembed = Embed(length(tgtvocab.i2w),tgtembsz)
 
     layerMultiplier = bidirectional ? 2 : 1
 
-    decoder = RNN(tgtembsz,hidden,numLayers = layerMultiplier*layers,dropout=dropout,usegpu=false,dataType=Float64)
+    decoder = RNN(tgtembsz,hidden,numLayers = layerMultiplier*layers,dropout=dropout,usegpu=false,dataType=Float32)
 
     projection = Linear(hidden,length(tgtvocab.i2w))
 
@@ -413,8 +412,8 @@ end
 
 #-
 
-@info "Testing loss"
-@time res = loss(model, dtst, average=false)
+#@info "Testing loss"
+#@time res = loss(model, dtst, average=false)
 #@test res == (1.0429117f6, 105937) !!!!!!!!!!
 ## Your loss can be slightly different due to different ordering of words in the vocabulary.
 ## The reference vocabulary starts with eos, unk, followed by words in decreasing frequency.
@@ -456,7 +455,7 @@ trnx10 = collect(flatten(shuffle!(ctrn) for i in 1:epochs))
 trn20 = ctrn[1:20]
 dev38 = collect(ddev)
 ## Uncomment this to train the model (This takes about 30 mins on a V100):
-## model = train!(model, trnx10, dev38, trn20)
+model = train!(model, trnx10, dev38, trn20)
 ## Uncomment this to save the model:
 ## Knet.save("s2s_v1.jld2","model",model)
 ## Uncomment this to load the model:
@@ -576,8 +575,8 @@ end
 # low. As can be seen from the sample translations a loss of ~3+ (perplexity ~20+) or a BLEU
 # of ~8 is not sufficient to generate meaningful translations.
 
-@info "Calculating BLEU"
-bleu(model, ddev)
+#@info "Calculating BLEU"
+#bleu(model, ddev)
 
 # To improve the quality of translations we can use more training data, different training
 # and model parameters, or preprocess the input/output: e.g. splitting Turkish words to make
