@@ -21,7 +21,7 @@ Pkg.build("CuArrays")
 
 using CuArrays: CuArrays, usage_limit
 
-CuArrays.usage_limit[] = 8_000_000_000
+#CuArrays.usage_limit[] = 8_000_000_000
 BATCH_SIZE = 64
 
 Pkg.update()
@@ -112,7 +112,7 @@ struct TextReader
     vocab::Vocab
 end
 
-word2ind(dict, x) = get(dict, x, 1)
+word2ind(dict, x) = get(dict, x, 2) # unk is 2
 
 #Implementing the iterate function
 function Base.iterate(r::TextReader, s = nothing)
@@ -315,7 +315,6 @@ end
 
 
 function arraybatch(d::MTData, bucket)
-    # Your code here
     bucketx = map(x -> x[1], bucket)
     buckety = map(x -> x[2], bucket)
     batch_x = fill(d.src.vocab.eos, length(bucketx), maximum(length.(bucketx)))
@@ -343,6 +342,7 @@ dtst = MTData(tr_test, en_test)
 
 x, y = first(dtst)
 
+# Commented out this since we have changed the batch size
 # @test length(collect(dtst)) == 48
 # @test size.((x, y)) == ((128, 10), (128, 24))
 @test x[1, 1] == tr_vocab.eos

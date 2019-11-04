@@ -95,7 +95,7 @@ struct TextReader
     vocab::Vocab
 end
 
-word2ind(dict,x) = get(dict, x, 1)
+word2ind(dict,x) = get(dict, x, 2)
 
 #Implementing the iterate function
 function Base.iterate(r::TextReader, s=nothing)
@@ -371,10 +371,11 @@ function (s::S2S_v1)(src, tgt; average=true)
 
     #@test size(project_out)==(length(project.b),B*Ty)
 
-    mask!(tgt,s.tgtvocab.eos)
+    verify = deepcopy(tgt)
+    mask!(verify, s.tgtvocab.eos)
 
-    average && return mean(nll(project_out,tgt[:,2:end]))
-    return nll(project_out,tgt[:,2:end];average=false)
+    average && return mean(nll(project_out,verify[:,2:end]))
+    return nll(project_out,verify[:,2:end];average=false)
 end
 
 #-
