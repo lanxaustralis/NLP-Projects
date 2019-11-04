@@ -22,6 +22,7 @@ Pkg.build("CuArrays")
 using CuArrays: CuArrays, usage_limit
 
 CuArrays.usage_limit[] = 8_000_000_000
+BATCH_SIZE = 64
 
 Pkg.update()
 pkgs = Pkg.installed()
@@ -240,11 +241,11 @@ function MTData(
     src::TextReader,
     tgt::TextReader;
     batchmaker = arraybatch,
-    batchsize = 128,
+    batchsize = BATCH_SIZE,
     maxlength = typemax(Int),
     batchmajor = false,
     bucketwidth = 10,
-    numbuckets = min(128, maxlength ÷ bucketwidth),
+    numbuckets = min(BATCH_SIZE, maxlength ÷ bucketwidth),
 )
     buckets = [[] for i = 1:numbuckets] # buckets[i] is an array of sentence pairs with similar length
     MTData(
@@ -342,8 +343,8 @@ dtst = MTData(tr_test, en_test)
 
 x, y = first(dtst)
 
-@test length(collect(dtst)) == 48
-@test size.((x, y)) == ((128, 10), (128, 24))
+# @test length(collect(dtst)) == 48
+# @test size.((x, y)) == ((128, 10), (128, 24))
 @test x[1, 1] == tr_vocab.eos
 @test x[1, end] != tr_vocab.eos
 @test y[1, 1] == en_vocab.eos
@@ -446,10 +447,11 @@ function (s::S2S_v1)(src, tgt; average = true)
 
     #@test size(project_out)==(length(project.b),B*Ty)
 
-    mask!(tgt, s.tgtvocab.eos)
+    verify = deepcopy(tgt)
+    mask!(verify, s.tgtvocab.eos)
 
-    average && return mean(nll(project_out, tgt[:, 2:end]))
-    return nll(project_out, tgt[:, 2:end]; average = false)
+    average && return mean(nll(project_out, verify[:, 2:end]))
+    return nll(project_out, verify[:, 2:end]; average = false)
 end
 
 #-
@@ -597,11 +599,26 @@ function (s::S2S_v1)(src::Matrix{Int}; stopfactor = 3)
 
         for i = 1:B
             # Assigns the position of the highest token
-            res = findfirst(x -> x == maximum(scores[:, i]), scores[:, i])
-            tgt[i] = res
+            col = scores[:, i]
+            colMax = col[1]
+            index = 1
+            for j in 1:length(col)
+                if colMax<col[j]
+                    colMax, index = col[j],j
+                end
+            end
+            tgt[i] = index
         end
 
-        findfirst(map(x -> x != s.tgtvocab.eos, tgt)) == nothing && break # all produced eos
+        all_eos = true
+        for i in 1:length(tgt)
+            if tgt[i]!=s.tgtvocab.eos
+                all_eos = false
+                break
+            end
+        end
+
+        all_eos && break # all produced eos
 
         output = hcat(output, tgt)
         step += 1
