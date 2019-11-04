@@ -387,6 +387,7 @@ model = S2S_v1(512, 512, 512, tr_vocab, en_vocab; layers=2, bidirectional=true, 
 ## Your loss can be slightly different due to different ordering of words in the vocabulary.
 ## The reference vocabulary starts with eos, unk, followed by words in decreasing frequency.
 #@test model(x,y; average=false) == (14097.471f0, 1432)  !!!!!!
+println(model(x, y; average = false))
 
 
 
@@ -413,8 +414,9 @@ end
 
 #-
 
-#@info "Testing loss"
-#@time res = loss(model, dtst, average=false)
+@info "Testing loss"
+@time res = loss(model, dtst, average=false)
+println(res)
 #@test res == (1.0429117f6, 105937) !!!!!!!!!!
 ## Your loss can be slightly different due to different ordering of words in the vocabulary.
 ## The reference vocabulary starts with eos, unk, followed by words in decreasing frequency.
@@ -474,9 +476,13 @@ dev38 = collect(ddev)
 
 function (s::S2S_v1)(src::Matrix{Int}; stopfactor = 3)
     # Preperation for initial step
-    B = size(src, 1)
-    tgt = fill(s.tgtvocab.eos, (B, 1)) # size as (B,2)
-    output = deepcopy(tgt)
+    B,Tx = size(src)
+    max_step = stopfactor * Tx
+    tgt_eos = s.tgtvocab.eos
+
+    tgt = fill(tgt_eos, (B, 1)) # size as (B,2)
+    #output = fill(tgt_eos,(B,max_step))
+    output = Array{Int64}(undef, B, max_step)
 
     rnn_encoder = s.encoder
     rnn_decoder = s.decoder
@@ -489,30 +495,25 @@ function (s::S2S_v1)(src::Matrix{Int}; stopfactor = 3)
     rnn_encoder.c = 0
 
     y_enc = rnn_encoder(emb_out_src)
-    h_enc = rnn_encoder.h
-    c_enc = rnn_encoder.c
+    rnn_decoder.h = rnn_encoder.h
+    rnn_decoder.c = rnn_encoder.c
 
-    rnn_decoder.h = h_enc
-    rnn_decoder.c = c_enc
-
-    step = 1
-    max_step = stopfactor * size(src, 2)
-    Ty = 1
+    step = 0
     #@test Ty == size(tgt,2)
 
-    while step <= max_step
+    while step < max_step
+        step += 1
         emb_out_tgt = s.tgtembed(tgt)
 
         y_dec = rnn_decoder(emb_out_tgt)
 
-        project_inp = reshape(y_dec, :, B * Ty)
+        project_inp = reshape(y_dec, :, B)
         project_out = project(project_inp)
 
-        scores = softmax(project_out)
-
+        eos_num = 0
         for i = 1:B
             # Assigns the position of the highest token
-            col = scores[:, i]
+            col = project_out[:, i]
             colMax = col[1]
             index = 1
             for j in 1:length(col)
@@ -520,24 +521,19 @@ function (s::S2S_v1)(src::Matrix{Int}; stopfactor = 3)
                     colMax, index = col[j],j
                 end
             end
+            if index == tgt_eos
+                eos_num += 1
+            end
             tgt[i] = index
         end
 
-        all_eos = true
-        for i in 1:length(tgt)
-            if tgt[i]!=s.tgtvocab.eos
-                all_eos = false
-                break
-            end
-        end
+        output[:,step] = tgt
+        eos_num == B && break # all produced eos
 
-        all_eos && break # all produced eos
 
-        output = hcat(output, tgt)
-        step += 1
     end
 
-    return output[:, 2:end]
+    return output[:, 1:step]
 
 end
 
