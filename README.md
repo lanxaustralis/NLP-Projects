@@ -19,4 +19,11 @@
 		* Use the latest version of the limited test file for the final training test
 		
 			> Commenting in the previous test cases would be sufficient to test all project
-	
+## Project 3
+
+* There are two Julia files which are ready to be tested in CPU and GPU environments, specifically.
+	* Test result in CPU version is more accurate since we have changed the *batch size* in order to fit GPU arrays in to memory.
+	* In order to provide a fluent run, test cases which halts the program as they are too specific, are commented out. Instead, results are printed out for each test cases.
+* For convenience, the jupyter file, that was run on *Google Colab* environment that consists of a K80 GPU instance, provided.
+* You can access the trained model via following Drive link:
+	> https://drive.google.com/drive/folders/1N8JMHL61X3DcdF9O1EH5CER4esL4FehC?usp=sharing
