@@ -614,6 +614,7 @@ function (s::S2S_v1)(src::Matrix{Int}; stopfactor = 3)
         for i in 1:length(tgt)
             if tgt[i]!=s.tgtvocab.eos
                 all_eos = false
+                break
             end
         end
 
