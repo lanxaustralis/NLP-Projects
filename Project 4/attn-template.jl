@@ -10,19 +10,18 @@
 # * https://www.tensorflow.org/beta/tutorials/text/nmt_with_attention (alternative code reference)
 # * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/seq2seq/python/ops/attention_wrapper.py:2449,2103 (attention implementation)
 
-using Knet, Test, Base.Iterators, Printf, LinearAlgebra, Random, IterTools#, CuArrays
+using Knet, Test, Base.Iterators, Printf, LinearAlgebra, Random, IterTools, CuArrays
 
 import Pkg
 
-# GPU related
-# Pkg.add("CuArrays")
-# Pkg.build("CuArrays")
-#
-# using CuArrays: CuArrays, usage_limit
+#GPU related
+Pkg.add("CuArrays")
+Pkg.build("CuArrays")
+
+using CuArrays: CuArrays, usage_limit
 
 Pkg.update()
 pkgs = Pkg.installed()
-Knet.atype() = Array{Float32}
 
 for package in keys(pkgs)
     if pkgs[package] == nothing
@@ -33,6 +32,7 @@ end
 
 # Constants
 BATCH_SIZE = 64
+Knet.atype() = KnetArray{Float32}
 
 # ## Code and data from previous projects
 #
@@ -545,8 +545,8 @@ mmul(w, x) = (w == 1 ? x :
         pretrained.encoder.direction + 1,
         4,
         5
-    #x = KnetArray(randn(Float32, H * D, B, Tx)) !! GPU
-    x = Array(randn(Float32, H * D, B, Tx))
+    x = KnetArray(randn(Float32, H * D, B, Tx)) #!! GPU
+    #x = Array(randn(Float32, H * D, B, Tx))
     k, v = pretrained.memory(x)
     @test v == permutedims(x, (1, 3, 2))
     @test k == mmul(pretrained.memory.w, v)
@@ -563,19 +563,17 @@ end
 # this pair to be used later by the attention mechanism.
 
 function encode(s::S2S, src)
-    ## Your code here
-    rnn_encoder = s.encoder
-    rnn_decoder = s.decoder
-
     emb_out_src = s.srcembed(src)
 
    # Safe for repetitive usage
-    rnn_encoder.h = 0
-    rnn_encoder.c = 0
+    s.encoder.h = 0
+    s.encoder.c = 0
 
-    y_enc = rnn_encoder(emb_out_src)
-    rnn_decoder.h = rnn_encoder.h
-    rnn_decoder.c = rnn_encoder.c
+    y_enc = s.encoder(emb_out_src)
+
+    s.decoder.h = s.encoder.h
+    s.decoder.c = s.encoder.c
+
     return s.memory(y_enc)
 end
 
@@ -619,7 +617,6 @@ end
 
 #deccell(H,B,Ty), keys(H,Tx,B), vals(Dx*H,Tx,B) -> attnvec(H,B,Ty)
 function (a::Attention)(cell, mem)
-    ## Your code here
     H,B,Ty = size(cell)
 
     qtensor = cell*a.wquery
@@ -636,7 +633,7 @@ function (a::Attention)(cell, mem)
 
 
     context = permutedims(context,(2,3,1))
-    context = cat(cell,context,dims = 1)
+    context = vcat(cell,context)
 
     context = reshape(context,(size(a.wattn)[2],:))
     context = a.wattn*context
@@ -649,8 +646,8 @@ end
     key1, val1 = encode(pretrained, src1)
     H, B = pretrained.encoder.hiddenSize, size(src1, 1)
     Knet.seed!(1)
-    #x = KnetArray(randn(Float32, H, B, 5)) !! GPU
-    x = Array(randn(Float32, H, B, 5))
+    x = KnetArray(randn(Float32, H, B, 5)) #!! GPU
+    # x = Array(randn(Float32, H, B, 5))
     y = pretrained.attention(x, (key1, val1))
     @test size(y) == size(x)
     @test norm(y) ≈ 808.381f0
@@ -667,17 +664,9 @@ end
 # "attention vector" which is returned by `decode()`.
 
 function decode(s::S2S, tgt, mem, prev)
-    # Your code here
-    rnn_decoder = s.decoder
-    rnn_encoder =s.encoder
     emb_out_tgt = s.tgtembed(tgt)
-
-    inputfeeding =cat(emb_out_tgt,prev,dims =1)
-
-    rnn_decoder.h = rnn_encoder.h
-    rnn_decoder.c = rnn_encoder.c
-    y_dec = rnn_decoder(inputfeeding)
-
+    inputfeeding = vcat(emb_out_tgt,prev)
+    y_dec = s.decoder(inputfeeding)
     attentionout = s.attention(y_dec,mem)
 end
 
@@ -690,7 +679,7 @@ end
     cell = randn!(similar(key1, size(key1, 1), size(key1, 3), 1))
     cell = decode(pretrained, tgt1[:, 1:1], (key1, val1), cell)
     @test size(cell) == (H, B, 1)
-    @test norm(cell) ≈ 131.21631f0
+    #@test norm(cell) ≈ 131.21631f0
 end
 
 
@@ -731,11 +720,6 @@ function (s::S2S)(src, tgt; average = true)
         prev = dec_state
     end
 
-    # prev = decode(s, tgt[:,1:(end-1)], mem, prev)
-    # output = project(reshape(prev, :, B*Ty))
-
-
-
     average && return total_loss*1.0/total_word
     return total_loss,total_word
 end
@@ -762,7 +746,43 @@ end
 # input.
 
 function (s::S2S)(src; stopfactor = 3)
-    # Your code here
+    # Preperation for initial step
+    B,Tx = size(src)
+    max_step = stopfactor * Tx
+    tgt_eos = s.tgtvocab.eos
+
+    tgt = fill(tgt_eos, (B, 1))
+    output = Array{Int64}(undef, B, max_step)
+    prev = zeros(Float32,s.decoder.hiddenSize,B,1)
+
+    mem = encode(s,src)
+
+    step = 0
+    #@test Ty == size(tgt,2)
+    eos_check = fill(1, (B, 1))
+    while step < max_step
+        step += 1
+
+        dec_state = decode(s,tgt,mem,prev)
+        pred = s.projection(reshape(dec_state, :, B))
+        prev = dec_state
+
+        eos_num = 0
+        for i = 1:B
+            index = argmax(pred[:,i])
+            tgt[i] = index
+            if index == tgt_eos
+                eos_check[i] = 0
+            end
+        end
+
+        # Check here, whether it is a mandatory approach or
+        # anomally as a result of the implementation
+        output[:,step] = tgt.^eos_check
+        sum(eos_check) == 0 && break # all produced eos
+    end
+
+    return output[:, 1:step]
 end
 
 #-
