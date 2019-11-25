@@ -27,3 +27,9 @@
 * For convenience, the jupyter file, that was run on *Google Colab* environment that consists of a K80 GPU instance, provided.
 * You can access the trained model via following Drive link:
 	> https://drive.google.com/drive/folders/1N8JMHL61X3DcdF9O1EH5CER4esL4FehC?usp=sharing
+
+## Project 4
+
+* There are two Julia files which are ready to be tested in CPU and GPU environments, specifically.
+	* GPU file is cleared from tests, which focuses on traning.
+	* Tests can be performed through the main file. (*attn-template*)
