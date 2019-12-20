@@ -543,9 +543,9 @@ trnx10 = collect(flatten(shuffle!(ctrn) for i = 1:epochs))
 trn20 = ctrn[1:20]
 dev38 = collect(ddev)
 ## Uncomment this to train the model (This takes about 30 mins on a V100):
-model = train!(model, trnx10, dev38, trn20)
+#model = train!(model, trnx10, dev38, trn20)
 ## Uncomment this to save the model:
-Knet.save("s2s_v1.jld2","model",model)
+#Knet.save("s2s_v1.jld2","model",model)
 ## Uncomment this to load the model:
 model = Knet.load("s2s_v1.jld2","model")
 
@@ -599,13 +599,14 @@ function (s::S2S_v1)(src::Matrix{Int}; stopfactor = 3)
         for i = 1:B
             # Assigns the position of the highest token
             col = project_out[:, i]
-            colMax = col[1]
-            index = 1
-            for j in 1:length(col)
-                if colMax<col[j]
-                    colMax, index = col[j],j
-                end
-            end
+#             colMax = col[1]
+#             index = 1
+#             for j in 1:length(col)
+#                 if colMax<col[j]
+#                     colMax, index = col[j],j
+#                 end
+#             end
+            index = findmax(col)[2]
             if index == tgt_eos
                 eos_num += 1
             end
