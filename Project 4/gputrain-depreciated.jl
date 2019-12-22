@@ -1,3 +1,4 @@
+
 #jl Use `Literate.notebook(juliafile, ".", execute=false)` to convert to notebook.
 
 # # Attention-based Neural Machine Translation
@@ -10,7 +11,7 @@
 # * https://www.tensorflow.org/beta/tutorials/text/nmt_with_attention (alternative code reference)
 # * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/seq2seq/python/ops/attention_wrapper.py:2449,2103 (attention implementation)
 
-using Knet, Test, Base.Iterators, Printf, LinearAlgebra, Random, IterTools, CuArrays
+using Knet, Test, Base.Iterators, Printf, LinearAlgebra, Random, IterTools#, CuArrays
 
 import Pkg
 
@@ -19,6 +20,7 @@ Pkg.add("CuArrays")
 Pkg.build("CuArrays")
 
 using CuArrays: CuArrays, usage_limit
+CuArrays.usage_limit[] = 8_000_000_000
 
 Pkg.update()
 pkgs = Pkg.installed()
@@ -471,42 +473,42 @@ function S2S(hidden::Int, srcembsz::Int, tgtembsz::Int, srcvocab::Vocab, tgtvoca
 end
 
 #-
-@testset "Testing S2S constructor" begin
-    H, Ex, Ey, Vx, Vy, L, Dx, Pdrop = 8,
-        9,
-        10,
-        length(dtrn.src.vocab.i2w),
-        length(dtrn.tgt.vocab.i2w),
-        2,
-        2,
-        0.2
-    m = S2S(
-        H,
-        Ex,
-        Ey,
-        dtrn.src.vocab,
-        dtrn.tgt.vocab;
-        layers = L,
-        bidirectional = (Dx == 2),
-        dropout = Pdrop,
-    )
-    @test size(m.srcembed.w) == (Ex, Vx)
-    @test size(m.tgtembed.w) == (Ey, Vy)
-    @test m.encoder.inputSize == Ex
-    @test m.decoder.inputSize == Ey + H
-    @test m.encoder.hiddenSize == m.decoder.hiddenSize == H
-    @test m.encoder.direction == Dx - 1
-    @test m.encoder.numLayers == (Dx == 2 ? L ÷ 2 : L)
-    @test m.decoder.numLayers == L
-    @test m.encoder.dropout == m.decoder.dropout == Pdrop
-    @test size(m.projection.w) == (Vy, H)
-    @test size(m.memory.w) == (Dx == 2 ? (H, 2H) : ())
-    @test m.attention.wquery == 1
-    @test size(m.attention.wattn) == (Dx == 2 ? (H, 3H) : (H, 2H))
-    @test size(m.attention.scale) == (1,)
-    @test m.srcvocab === dtrn.src.vocab
-    @test m.tgtvocab === dtrn.tgt.vocab
-end
+# @testset "Testing S2S constructor" begin
+#     H, Ex, Ey, Vx, Vy, L, Dx, Pdrop = 8,
+#         9,
+#         10,
+#         length(dtrn.src.vocab.i2w),
+#         length(dtrn.tgt.vocab.i2w),
+#         2,
+#         2,
+#         0.2
+#     m = S2S(
+#         H,
+#         Ex,
+#         Ey,
+#         dtrn.src.vocab,
+#         dtrn.tgt.vocab;
+#         layers = L,
+#         bidirectional = (Dx == 2),
+#         dropout = Pdrop,
+#     )
+#     @test size(m.srcembed.w) == (Ex, Vx)
+#     @test size(m.tgtembed.w) == (Ey, Vy)
+#     @test m.encoder.inputSize == Ex
+#     @test m.decoder.inputSize == Ey + H
+#     @test m.encoder.hiddenSize == m.decoder.hiddenSize == H
+#     @test m.encoder.direction == Dx - 1
+#     @test m.encoder.numLayers == (Dx == 2 ? L ÷ 2 : L)
+#     @test m.decoder.numLayers == L
+#     @test m.encoder.dropout == m.decoder.dropout == Pdrop
+#     @test size(m.projection.w) == (Vy, H)
+#     @test size(m.memory.w) == (Dx == 2 ? (H, 2H) : ())
+#     @test m.attention.wquery == 1
+#     @test size(m.attention.wattn) == (Dx == 2 ? (H, 3H) : (H, 2H))
+#     @test size(m.attention.scale) == (1,)
+#     @test m.srcvocab === dtrn.src.vocab
+#     @test m.tgtvocab === dtrn.tgt.vocab
+# end
 
 
 # ## Part 2. Memory
@@ -540,17 +542,17 @@ mmul(w, x) = (w == 1 ? x :
  reshape(w * reshape(x, size(x, 1), :), (:, size(x)[2:end]...)))
 
 #-
-@testset "Testing memory" begin
-    H, D, B, Tx = pretrained.encoder.hiddenSize,
-        pretrained.encoder.direction + 1,
-        4,
-        5
-    x = KnetArray(randn(Float32, H * D, B, Tx)) #!! GPU
-    #x = Array(randn(Float32, H * D, B, Tx))
-    k, v = pretrained.memory(x)
-    @test v == permutedims(x, (1, 3, 2))
-    @test k == mmul(pretrained.memory.w, v)
-end
+# @testset "Testing memory" begin
+#     H, D, B, Tx = pretrained.encoder.hiddenSize,
+#         pretrained.encoder.direction + 1,
+#         4,
+#         5
+#     x = KnetArray(randn(Float32, H * D, B, Tx)) #!! GPU
+#     #x = Array(randn(Float32, H * D, B, Tx))
+#     k, v = pretrained.memory(x)
+#     @test v == permutedims(x, (1, 3, 2))
+#     @test k == mmul(pretrained.memory.w, v)
+# end
 
 
 # ## Part 3. Encoder
@@ -578,24 +580,24 @@ function encode(s::S2S, src)
 end
 
 #-
-@testset "Testing encoder" begin
-    src1, tgt1 = first(dtrn)
-    key1, val1 = encode(pretrained, src1)
-    H, D, B, Tx = pretrained.encoder.hiddenSize,
-        pretrained.encoder.direction + 1,
-        size(src1, 1),
-        size(src1, 2)
-    @test size(key1) == (H, Tx, B)
-    @test size(val1) == (H * D, Tx, B)
-    @test (pretrained.decoder.h, pretrained.decoder.c) === (
-        pretrained.encoder.h,
-        pretrained.encoder.c,
-    )
-    @test norm(key1) ≈ 1214.4755f0
-    @test norm(val1) ≈ 191.10411f0
-    @test norm(pretrained.decoder.h) ≈ 48.536964f0
-    @test norm(pretrained.decoder.c) ≈ 391.69028f0
-end
+# @testset "Testing encoder" begin
+#     src1, tgt1 = first(dtrn)
+#     key1, val1 = encode(pretrained, src1)
+#     H, D, B, Tx = pretrained.encoder.hiddenSize,
+#         pretrained.encoder.direction + 1,
+#         size(src1, 1),
+#         size(src1, 2)
+#     @test size(key1) == (H, Tx, B)
+#     @test size(val1) == (H * D, Tx, B)
+#     @test (pretrained.decoder.h, pretrained.decoder.c) === (
+#         pretrained.encoder.h,
+#         pretrained.encoder.c,
+#     )
+#     @test norm(key1) ≈ 1214.4755f0
+#     @test norm(val1) ≈ 191.10411f0
+#     @test norm(pretrained.decoder.h) ≈ 48.536964f0
+#     @test norm(pretrained.decoder.c) ≈ 391.69028f0
+# end
 
 
 # ## Part 4. Attention
@@ -617,6 +619,7 @@ end
 
 #deccell(H,B,Ty), keys(H,Tx,B), vals(Dx*H,Tx,B) -> attnvec(H,B,Ty)
 function (a::Attention)(cell, mem)
+    println(s)
     H,B,Ty = size(cell)
 
     qtensor = cell*a.wquery
@@ -633,7 +636,7 @@ function (a::Attention)(cell, mem)
 
 
     context = permutedims(context,(2,3,1))
-    context = vcat(cell,context)
+    context = cat(cell,context;dims=1)
 
     context = reshape(context,(size(a.wattn)[2],:))
     context = a.wattn*context
@@ -641,17 +644,17 @@ function (a::Attention)(cell, mem)
 end
 
 #-
-@testset "Testing attention" begin
-    src1, tgt1 = first(dtrn)
-    key1, val1 = encode(pretrained, src1)
-    H, B = pretrained.encoder.hiddenSize, size(src1, 1)
-    Knet.seed!(1)
-    x = KnetArray(randn(Float32, H, B, 5)) #!! GPU
-    # x = Array(randn(Float32, H, B, 5))
-    y = pretrained.attention(x, (key1, val1))
-    @test size(y) == size(x)
-    @test norm(y) ≈ 808.381f0
-end
+# @testset "Testing attention" begin
+#     src1, tgt1 = first(dtrn)
+#     key1, val1 = encode(pretrained, src1)
+#     H, B = pretrained.encoder.hiddenSize, size(src1, 1)
+#     Knet.seed!(1)
+#     x = KnetArray(randn(Float32, H, B, 5)) #!! GPU
+#     # x = Array(randn(Float32, H, B, 5))
+#     y = pretrained.attention(x, (key1, val1))
+#     @test size(y) == size(x)
+#     @test norm(y) ≈ 808.381f0
+# end
 
 
 # ## Part 5. Decoder
@@ -664,23 +667,32 @@ end
 # "attention vector" which is returned by `decode()`.
 
 function decode(s::S2S, tgt, mem, prev)
+    println(size(tgt))
     emb_out_tgt = s.tgtembed(tgt)
-    inputfeeding = vcat(emb_out_tgt,prev)
+
+    println(size(emb_out_tgt))
+    println(size(prev))
+    println(typeof(emb_out_tgt))
+    println(typeof(prev))
+
+    inputfeeding = cat(emb_out_tgt,prev;dims=1)
     y_dec = s.decoder(inputfeeding)
+    println(size(y_dec))
+    println(mem)
     attentionout = s.attention(y_dec,mem)
 end
 
 #-
-@testset "Testing decoder" begin
-    src1, tgt1 = first(dtrn)
-    key1, val1 = encode(pretrained, src1)
-    H, B = pretrained.encoder.hiddenSize, size(src1, 1)
-    Knet.seed!(1)
-    cell = randn!(similar(key1, size(key1, 1), size(key1, 3), 1))
-    cell = decode(pretrained, tgt1[:, 1:1], (key1, val1), cell)
-    @test size(cell) == (H, B, 1)
-    #@test norm(cell) ≈ 131.21631f0
-end
+# @testset "Testing decoder" begin
+#     src1, tgt1 = first(dtrn)
+#     key1, val1 = encode(pretrained, src1)
+#     H, B = pretrained.encoder.hiddenSize, size(src1, 1)
+#     Knet.seed!(1)
+#     cell = randn!(similar(key1, size(key1, 1), size(key1, 3), 1))
+#     cell = decode(pretrained, tgt1[:, 1:1], (key1, val1), cell)
+#     @test size(cell) == (H, B, 1)
+#     #@test norm(cell) ≈ 131.21631f0
+# end
 
 
 # ## Part 6. Loss
@@ -703,7 +715,7 @@ function (s::S2S)(src, tgt; average = true)
     project = s.projection
 
     mem = encode(s,src)
-    prev = zeros(Float32,s.decoder.hiddenSize,B,1)
+    prev = KnetArray(zeros(Float32,s.decoder.hiddenSize,B))
 
     verify = deepcopy(tgt[:,2:end])
     mask!(verify, s.tgtvocab.eos)
@@ -711,6 +723,7 @@ function (s::S2S)(src, tgt; average = true)
     total_loss = 0
     total_word = 0
 
+    println("hegefgei",typeof(mem))
     for word_order in 1:Ty
         dec_state = decode(s, tgt[:,word_order], mem, prev)
         pred = project(reshape(dec_state, :, B))
@@ -725,11 +738,11 @@ function (s::S2S)(src, tgt; average = true)
 end
 
 #-
-@testset "Testing loss" begin
-    src1, tgt1 = first(dtrn)
-    @test pretrained(src1, tgt1) ≈ 1.4666592f0
-    @test pretrained(src1, tgt1, average = false) == (1949.1901f0, 1329)
-end
+# @testset "Testing loss" begin
+#     src1, tgt1 = first(dtrn)
+#     @test pretrained(src1, tgt1) ≈ 1.4666592f0
+#     @test pretrained(src1, tgt1, average = false) == (1949.1901f0, 1329)
+# end
 
 # ## Part 7. Greedy translator
 #
@@ -769,7 +782,7 @@ function (s::S2S)(src; stopfactor = 3)
 
         eos_num = 0
         for i = 1:B
-            index = argmax(pred[:,i])
+            index = findmax(pred[:,i])(2)
             tgt[i] = index
             if index == tgt_eos
                 eos_check[i] = 0
@@ -786,12 +799,12 @@ function (s::S2S)(src; stopfactor = 3)
 end
 
 #-
-@testset "Testing translator" begin
-    src1, tgt1 = first(dtrn)
-    tgt2 = pretrained(src1)
-    @test size(tgt2) == (64, 41)
-    @test tgt2[1:3, 1:3] == [14 25 10647; 37 25 1426; 27 5 349]
-end
+# @testset "Testing translator" begin
+#     src1, tgt1 = first(dtrn)
+#     tgt2 = pretrained(src1)
+#     @test size(tgt2) == (64, 41)
+#     @test tgt2[1:3, 1:3] == [14 25 10647; 37 25 1426; 27 5 349]
+# end
 
 
 # ## Part 8. Training
@@ -866,8 +879,8 @@ end
 
 ## Uncomment the appropriate option for training:
 model = pretrained  # Use reference model
-## model = Knet.load("attn-1538395466294882.jld2", "model")  # Load pretrained model
-## model = trainmodel(dtrn,ddev,take(dtrn,20); epochs=10, save=true, bleu=true)  # Train model
+#model = Knet.load("attn-1538395466294882.jld2", "model")  # Load pretrained model
+model = trainmodel(dtrn,ddev,take(dtrn,20); epochs=10, save=true, bleu=true)  # Train model
 
 # Code to sample translations from a dataset
 data1 = MTData(tr_dev, en_dev, batchsize = 1) |> collect;
