@@ -30,6 +30,9 @@
 
 ## Project 4
 
-* There are two Julia files which are ready to be tested in CPU and GPU environments, specifically.
+~* There are two Julia files which are ready to be tested in CPU and GPU environments, specifically.
 	* GPU file is cleared from tests, which focuses on traning.
-	* Tests can be performed through the main file. (*attn-template*)
+	* Tests can be performed through the main file. (*attn-template*)~
+	
+* We have provided a jupyter notebook which trained in a GPU machine and fulfills all tests. 
+	* You can access pretrained model via the same drive link above.
