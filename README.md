@@ -2,9 +2,13 @@
 
 ## Project 1
 
-  * Change the *dir* variable according to the test environment
-  * Please run ***naive-bow.jl*** file
-  * Play with constants as you would like to 
+~* Change the *dir* variable according to the test environment~
+~* Please run ***naive-bow.jl*** file~
+~* Play with constants as you would like to~
+ * Notebook file with desired accuracy were added!
+ 
+
+
 
 ## Project 2
 
