@@ -26,8 +26,8 @@
 	* In order to provide a fluent run, test cases which halts the program as they are too specific, are commented out. Instead, results are printed out for each test cases.
 * For convenience, the jupyter file, that was run on *Google Colab* environment that consists of a K80 GPU instance, provided.
 * You can access the trained model via following Drive link:
-	> https://drive.google.com/drive/folders/1N8JMHL61X3DcdF9O1EH5CER4esL4FehC?usp=sharing
-
+	> https://drive.google.com/open?id=1JFIbSjknzDBLDI-uSeu5XueFAj_-AxFe
+	
 ## Project 4
 
 ~* There are two Julia files which are ready to be tested in CPU and GPU environments, specifically.
